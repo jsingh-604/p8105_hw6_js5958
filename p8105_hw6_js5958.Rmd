@@ -185,6 +185,7 @@ df_weight %>%
     x = "Outcome Variable",
     y = "Predictor Variables")
 ```
+
 From the above correlation map we can selected the variables which are significantly correlated with weight. The variables we will be using are mother’s weight gain during pregnancy (pounds), gestational age in weeks, mother’s weight at delivery (pounds),  baby’s head circumference at birth (centimeters), baby’s length at birth (centimeters).
 
 Converting numeric value to factor where ever it is appropriate:
