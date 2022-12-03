@@ -189,8 +189,8 @@ From the above correlation map we can selected the variables which are significa
 
 Converting numeric value to factor where ever it is appropriate:
 ```{r}
-birthwgt_df <-
-  birthwgt_df %>%
+df_weight <-
+  df_weight %>%
   mutate(babysex = recode(babysex,'1' = 'male','2' = 'female'),
          babysex = factor(babysex, levels = c('male', 'female')),
          frace = recode(frace,'1' = 'White','2' = 'Black','3' = 'Asian',
@@ -240,14 +240,15 @@ df_weight %>%
 ```
 Compareing our model to two others:
 ```{r}
-model_1 <- lm(data = df_weight, bwt ~ blength + gaweeks)
+model_1 <- lm(bwt ~ blength + gaweeks, data = df_weight)
 
-model_2 <- lm(data = df_weight, bwt ~ bhead + blength + babysex + bhead*blength + bhead*babysex + blength*babysex + bhead*blength*babysex)
+model_2 <- lm(bwt ~ bhead + blength + babysex + bhead*blength + bhead*babysex +
+                blength*babysex + bhead*blength*babysex,data = df_weight)
 ```
 
 ```{r}
 cv_df <-
-  crossv_mc(birthwgt_df, 100) %>% 
+  crossv_mc(df_weight, 100) %>% 
   mutate(
     birthweight_model = map(train, ~lm(bwt ~ wtgain + mheight + gaweeks + delwt + bhead + blength, data = .x)),
     model_1 = map(train, ~lm(bwt ~ blength + gaweeks, data = .x)),
