@@ -263,18 +263,11 @@ cv_df <-
 ```{r}
 cv_df %>% 
   select(starts_with("rmse")) %>% 
-  pivot_longer(
-    everything(),
-    names_to = "model", 
-    values_to = "rmse",
+  pivot_longer(everything(),names_to = "model", values_to = "rmse",
     names_prefix = "rmse_") %>% 
-  mutate(model = 
-           fct_inorder(model)) %>% 
-  ggplot(aes(x = model, 
-             y = rmse)) + 
-  geom_boxplot() +
-  labs(
-    title = "Prediction Error Distributions across Models",
+  mutate(model = fct_inorder(model)) %>% 
+  ggplot(aes(x = model, y = rmse)) + 
+  geom_violin() +labs(
     x = "Models",
     y = "RMSE (root mean square error)"
   ) +
