@@ -8,6 +8,8 @@ date: "2022-12-03"
 library(tidyverse)
 library(viridis)
 library(dplyr)
+library(purrr)
+library(broom)
 ```
 
 
@@ -67,8 +69,92 @@ As with $r^2$, this distribution is somewhat skewed and has some outliers.
 The point of this is not to say you should always use the bootstrap -- it's possible to establish "large sample" distributions for strange parameters / values / summaries in a lot of cases, and those are great to have. But it is helpful to know that there's a way to do inference even in tough cases. 
 
 
+# Problem 2
+```{r}
+df =
+  read.csv("./data/homicide-data.csv", na = c("", "Unknown")) %>% 
+  mutate(
+    city_state = str_c(city, ', ', state),
+    resolved = case_when(
+           disposition =="Closed without arrest" ~ 0,
+           disposition =="Open/No arrest" ~ 0,
+           disposition =="Closed by arrest" ~ 1
+         ))
+```
 
+```{r}
+df <- df %>%
+  subset(city_state!="Phoenix, AZ" & city_state!="Kansas City, MO" & 
+  city_state!="Tulsa, AL" & city_state!="Dallas, TX")
+```
 
+```{r}
+df = df %>% 
+  mutate(
+    resolved = case_when(
+           disposition =="Closed without arrest" ~ 0,
+           disposition =="Open/No arrest" ~ 0,
+           disposition =="Closed by arrest" ~ 1),
+    victim_age = as.numeric(victim_age))
+```
+
+```{r}
+df <- df %>%
+  filter(victim_race == "White" | victim_race == "Black")
+```
+
+```{r}
+df <- df %>%
+  mutate(victim_age = as.numeric(victim_age))
+```
+
+```{r}
+baltimore_data <- df %>%
+  filter(city_state == "Baltimore, MD")  %>% 
+  select(resolved, victim_age, victim_race, victim_sex)
+```
+
+```{r}
+dat = baltimore_data %>%
+  mutate(victim_sex =  as.factor(victim_sex),
+         victim_race = as.factor(victim_race))
+baltimore_model <- glm(resolved ~ victim_age + victim_sex + victim_race, data = dat, family = "binomial")
+
+baltimore_model %>% 
+  broom::tidy(conf.int = T) %>% 
+  mutate(OR = exp(estimate),
+         CI_lower = exp(exp(conf.low)),
+         CI_upper = exp(exp(conf.high)),
+         p_val = rstatix::p_format(p.value, digits = 2)) %>% 
+  select(term, OR, CI_lower,CI_upper, p_val) %>% 
+  knitr::kable(digits = 3, align = "lccc", 
+               col.names = c("Term", "Estimated adjusted OR", "CI lower bound", "CI upper bound", "p-value"))
+```
+
+```{r}
+# Run glm for each city in dataset and extract OR and CI for male vs female victims
+cities_fit = df %>% 
+  nest(data = -city_state) %>%
+  mutate(
+    models = map(data, ~glm(resolved ~ victim_race + victim_sex + victim_age, 
+                            data = ., family = binomial(link = "logit"))),
+    results = map(models, ~broom::tidy(.x, conf.int = T))) %>% 
+  select(city_state, results) %>% 
+  unnest(results) %>% 
+  mutate(
+    OR = exp(estimate),
+    CI_lower = exp(conf.low),
+    CI_upper = exp(conf.high),
+    p_val = rstatix::p_format(p.value, digits = 3)
+  ) %>% 
+  filter(term == "victim_sexMale") %>% 
+  select(city_state, CI_lower, OR, CI_upper, p_val) 
+
+cities_fit %>% 
+  knitr::kable(digits = 3, align = "llccc", col.names = c("City", "Estimated adjusted OR", "CI lower bound", "CI upper bound", "p-value"))
+
+```
+# Problem 3 
 ```{r}
 #Loading Data and cleaning the data
 df_weight <- 
@@ -76,67 +162,47 @@ df_weight <-
   janitor::clean_names()
 
 ```
+
+Checking for any missing values and computing summary statistics:
 ```{r}
 skimr :: skim(df_weight)
 ```
+From the table we can see that there are no missing values
 
+
+Now we will check correlation of weights with the other variables in the dataset. This would help in building an optimum regression model
 ```{r}
 library(rstatix)
-birthwgt_df %>% 
+df_weight %>% 
   cor_mat() %>% 
   cor_gather() %>% 
   filter(var1 %in% c("bwt")) %>% 
   filter(!var2 %in% c("bwt")) %>% 
-  mutate(
-    sig_p = ifelse(p < 0.01, T, F),
-    p_if_sig = ifelse(p < 0.01, p, NA),
-    r_if_sig = ifelse(p < 0.01, cor, NA)
-  ) %>% 
-  ggplot(aes(
-    x = var1, 
-    y = var2, 
-    fill = cor,
-    label = round(r_if_sig, 2))) + 
-  geom_tile(color = "white") +  
-  scale_x_discrete() + 
-  geom_text(
-    color = "white",
-    size = 4
+  ggplot(aes(x = var1, y = var2, fill = cor,label = cor)) + 
+  geom_tile(color = "white") +  scale_x_discrete() + geom_text(
   ) + 
   labs(
     x = "Outcome Variable",
-    y = "Predictor Variable",
-    title = "Correlation Matrix Between Predictors and Outcomes")
-
+    y = "Predictor Variables")
 ```
+From the above correlation map we can selected the variables which are significantly correlated with weight. The variables we will be using are mother’s weight gain during pregnancy (pounds), gestational age in weeks, mother’s weight at delivery (pounds),  baby’s head circumference at birth (centimeters), baby’s length at birth (centimeters).
 
+Converting numeric value to factor where ever it is appropriate:
 ```{r}
-#Converted numeric to factor where ever it is appropriate
 birthwgt_df <-
   birthwgt_df %>%
-  mutate(babysex = recode(babysex,
-                          '1' = 'male',
-                          '2' = 'female'),
+  mutate(babysex = recode(babysex,'1' = 'male','2' = 'female'),
          babysex = factor(babysex, levels = c('male', 'female')),
-         frace = recode(frace,
-                        '1' = 'White',
-                        '2' = 'Black',
-                        '3' = 'Asian',
-                        '4' = 'Puerto Rican',
-                        '8' = 'Other',
-                        '9' = 'Unknown'), 
-         frace = factor(frace, levels = c('White', 'Black', 'Asian', 'Puerto Rican', 'Other')),
-         malform = recode(malform,
-                          '0' = 'absent',
-                          '1' = 'present'),
+         frace = recode(frace,'1' = 'White','2' = 'Black','3' = 'Asian',
+                        '4' = 'Puerto Rican','8' = 'Other','9' = 'Unknown'), 
+         frace = factor(frace, levels = c('White', 'Black', 'Asian', 
+                                          'Puerto Rican', 'Other')),
+         malform = recode(malform,'0' = 'absent','1' = 'present'),
          malform = factor(malform, levels = c('absent', 'present')), 
-         mrace = recode(mrace,
-                        '1' = 'White',
-                        '2' = 'Black',
-                        '3' = 'Asian',
-                        '4' = 'Puerto Rican',
-                        '8' = 'Other'), 
-         mrace = factor(mrace, levels = c('White', 'Black', 'Asian', 'Puerto Rican', 'Other')))
+         mrace = recode(mrace,'1' = 'White','2' = 'Black','3' = 'Asian',
+                        '4' = 'Puerto Rican','8' = 'Other'), 
+         mrace = factor(mrace, levels = c('White', 'Black', 
+                                          'Asian', 'Puerto Rican', 'Other')))
 
 ```
 
@@ -163,8 +229,7 @@ library(ggplot2)
 df_weight %>% 
   add_predictions(reg_model) %>% 
   add_residuals(reg_model) %>%
-  ggplot(aes(x = pred, 
-             y = resid)) +
+  ggplot(aes(x = pred, y = resid)) +
   geom_point( alpha = 0.5) +
   geom_smooth(method = "lm",
               se = FALSE) +
@@ -173,8 +238,7 @@ df_weight %>%
     y = "Residuals",
     title = "Residuals against Fitted Values")
 ```
-
-Model Comparison:
+Compareing our model to two others:
 ```{r}
 model_1 <- lm(data = df_weight, bwt ~ blength + gaweeks)
 
