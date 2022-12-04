@@ -1,7 +1,6 @@
 ---
-title: "p8105_hw6_js5958"
+title: "P8105 HW6 | Jagjit Singh | UNI: JS5958 "
 output: github_document
-date: "2022-12-03"
 ---
 
 ```{r}
@@ -70,6 +69,8 @@ The point of this is not to say you should always use the bootstrap -- it's poss
 
 
 # Problem 2
+
+Loading homicide data and cleaning it. Also creating a city_state variable (e.g. “Baltimore, MD”), and a binary variable indicating whether the homicide is solved:
 ```{r}
 df =
   read.csv("./data/homicide-data.csv", na = c("", "Unknown")) %>% 
@@ -82,22 +83,14 @@ df =
          ))
 ```
 
+Removing cities Dallas, TX; Phoenix, AZ; and Kansas City, MO – these don’t report victim race. Also removing Tulsa, AL:
 ```{r}
 df <- df %>%
   subset(city_state!="Phoenix, AZ" & city_state!="Kansas City, MO" & 
   city_state!="Tulsa, AL" & city_state!="Dallas, TX")
 ```
 
-```{r}
-df = df %>% 
-  mutate(
-    resolved = case_when(
-           disposition =="Closed without arrest" ~ 0,
-           disposition =="Open/No arrest" ~ 0,
-           disposition =="Closed by arrest" ~ 1),
-    victim_age = as.numeric(victim_age))
-```
-
+Filtering for victim_race = white or black
 ```{r}
 df <- df %>%
   filter(victim_race == "White" | victim_race == "Black")
@@ -108,17 +101,18 @@ df <- df %>%
   mutate(victim_age = as.numeric(victim_age))
 ```
 
+For the city of Baltimore MD, using the glm function to fit a logistic regression with resolved vs unresolved as the outcome and victim age, sex and race as predictors:
 ```{r}
+
 baltimore_data <- df %>%
   filter(city_state == "Baltimore, MD")  %>% 
   select(resolved, victim_age, victim_race, victim_sex)
-```
 
-```{r}
 dat = baltimore_data %>%
   mutate(victim_sex =  as.factor(victim_sex),
          victim_race = as.factor(victim_race))
-baltimore_model <- glm(resolved ~ victim_age + victim_sex + victim_race, data = dat, family = "binomial")
+baltimore_model <- glm(resolved ~ victim_age + victim_sex + victim_race, 
+                       data = dat, family = "binomial")
 
 baltimore_model %>% 
   broom::tidy(conf.int = T) %>% 
@@ -128,12 +122,15 @@ baltimore_model %>%
          p_val = rstatix::p_format(p.value, digits = 2)) %>% 
   select(term, OR, CI_lower,CI_upper, p_val) %>% 
   knitr::kable(digits = 3, align = "lccc", 
-               col.names = c("Term", "Estimated adjusted OR", "CI lower bound", "CI upper bound", "p-value"))
+               col.names = c("Term", "Estimated adjusted OR", "CI lower bound", 
+                             "CI upper bound", "p-value"))
 ```
 
+From the model summary we can see that, for the city of Baltimore homicides with female victims have a higher chance (more likely) of being resolved versus homicides with male victims, while controlling for all other variables. 
+
+Running a glm for each of the cities in the dataset, and extracting the adjusted odds ratio (and CI) for solving homicides comparing male victims to female victims:
 ```{r}
-# Run glm for each city in dataset and extract OR and CI for male vs female victims
-cities_fit = df %>% 
+df_cities = df %>% 
   nest(data = -city_state) %>%
   mutate(
     models = map(data, ~glm(resolved ~ victim_race + victim_sex + victim_age, 
@@ -141,22 +138,34 @@ cities_fit = df %>%
     results = map(models, ~broom::tidy(.x, conf.int = T))) %>% 
   select(city_state, results) %>% 
   unnest(results) %>% 
-  mutate(
-    OR = exp(estimate),
-    CI_lower = exp(conf.low),
-    CI_upper = exp(conf.high),
+  mutate(OR = exp(estimate),CI_lower = exp(conf.low),CI_upper = exp(conf.high),
     p_val = rstatix::p_format(p.value, digits = 3)
   ) %>% 
   filter(term == "victim_sexMale") %>% 
   select(city_state, CI_lower, OR, CI_upper, p_val) 
 
-cities_fit %>% 
-  knitr::kable(digits = 3, align = "llccc", col.names = c("City", "Estimated adjusted OR", "CI lower bound", "CI upper bound", "p-value"))
-
+df_cities%>% 
+  knitr::kable(digits = 3, align = "llccc", col.names = 
+                 c("City", "Estimated adjusted OR", "CI lower bound", 
+                   "CI upper bound", "p-value"))
 ```
-# Problem 3 
+
+Creating a plot that shows the estimated ORs and CIs for each city:
 ```{r}
-#Loading Data and cleaning the data
+df_cities %>% 
+  mutate(city_state = fct_reorder(city_state, OR)) %>%
+  ggplot(aes(x = city_state, y = OR)) +
+  geom_point(size = 1, aes(colour = OR)) +
+  geom_errorbar(aes(ymin = CI_lower, ymax = CI_upper)) +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1)) +
+  labs(x = "City, State", y = "Estimated OR with CI")
+```
+From the plot we can see that for most cities, the estimated odds ratio is less than 1. In-fact for almost half of cities, 1 is still higher than their confidence interval upper-limit. This implies that homicides with female victims have a higher chance (more likely) of being resolved versus homicides with male victims, while controlling for all other variables.
+
+# Problem 3 
+
+Loading data and cleaning the data:
+```{r}
 df_weight <- 
   read_csv("./data/birthweight.csv") %>%
   janitor::clean_names()
@@ -167,10 +176,11 @@ Checking for any missing values and computing summary statistics:
 ```{r}
 skimr :: skim(df_weight)
 ```
-From the table we can see that there are no missing values
+From the table we can see that there are no missing values.
 
+### The regression model
 
-Now we will check correlation of weights with the other variables in the dataset. This would help in building an optimum regression model
+To help build the regression model, we will check the correlation of child’s birth weight with the other variables in the data set. This would help in building an optimum regression model:
 ```{r}
 library(rstatix)
 df_weight %>% 
@@ -186,9 +196,9 @@ df_weight %>%
     y = "Predictor Variables")
 ```
 
-From the above correlation map we can selected the variables which are significantly correlated with weight. The variables we will be using are mother’s weight gain during pregnancy (pounds), gestational age in weeks, mother’s weight at delivery (pounds),  baby’s head circumference at birth (centimeters), baby’s length at birth (centimeters).
+From the above correlation plot we can select the variables which are significantly correlated with the child’s birth weight. These variables are: mother’s weight gain during pregnancy (pounds), mother’s height (inches), gestational age in weeks, mother’s weight at delivery (pounds), baby’s head circumference at birth (centimeters), and baby’s length at birth (centimeters).
 
-Converting numeric value to factor where ever it is appropriate:
+Converting numeric values to factors wherever it is appropriate based on the encoding:
 ```{r}
 df_weight <-
   df_weight %>%
@@ -207,23 +217,17 @@ df_weight <-
 
 ```
 
-# The regression model
+Now we will build a regression model using our selected predictors:
 ```{r}
 reg_model <- lm(bwt ~ wtgain + mheight + gaweeks + delwt + bhead + blength,  data =df_weight)
-#obtaining a quick summary of the model and for cleaning up the coefficient table using broom
-reg_model %>%
-  broom::glance()
-```
 
-```{r}
 reg_model %>%
   broom::tidy() %>%
   select(term, estimate, p.value) %>% 
   knitr::kable(digits = 3)
 ```
 
-
-Plot of model residuals against fitted values – use add_predictions and add_residuals in making this plot:
+Plot of model residuals against fitted values – using add_predictions and add_residuals in making this plot:
 ```{r}
 library(modelr)
 library(ggplot2)
@@ -239,7 +243,10 @@ df_weight %>%
     y = "Residuals",
     title = "Residuals against Fitted Values")
 ```
-Compareing our model to two others:
+
+### Comparing our model to two others:
+
+Specifying the models:
 ```{r}
 model_1 <- lm(bwt ~ blength + gaweeks, data = df_weight)
 
@@ -247,6 +254,7 @@ model_2 <- lm(bwt ~ bhead + blength + babysex + bhead*blength + bhead*babysex +
                 blength*babysex + bhead*blength*babysex,data = df_weight)
 ```
 
+Make this comparison in terms of the cross-validated prediction error:
 ```{r}
 cv_df <-
   crossv_mc(df_weight, 100) %>% 
@@ -261,6 +269,7 @@ cv_df <-
 
 ```
 
+Making the plot:
 ```{r}
 cv_df %>% 
   select(starts_with("rmse")) %>% 
@@ -268,13 +277,9 @@ cv_df %>%
     names_prefix = "rmse_") %>% 
   mutate(model = fct_inorder(model)) %>% 
   ggplot(aes(x = model, y = rmse)) + 
-  geom_violin() +labs(
-    x = "Models",
-    y = "RMSE (root mean square error)"
-  ) +
+  geom_violin() +labs(x = "Models", y = "RMSE") +
   scale_x_discrete(
-    labels = c("My Model", "Given Model 1", "Given Model 2")
-  )
-
+    labels = c("Our Model", "Model 1", "Model 2"))
 ```
 
+From the violin plot we can see that model 1 has the highest RMSE. Our model is the most accurate.
