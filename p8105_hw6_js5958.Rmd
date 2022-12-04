@@ -117,8 +117,8 @@ baltimore_model <- glm(resolved ~ victim_age + victim_sex + victim_race,
 baltimore_model %>% 
   broom::tidy(conf.int = T) %>% 
   mutate(OR = exp(estimate),
-         CI_lower = exp(exp(conf.low)),
-         CI_upper = exp(exp(conf.high)),
+         CI_lower = exp(conf.low),
+         CI_upper = exp(conf.high),
          p_val = rstatix::p_format(p.value, digits = 2)) %>% 
   select(term, OR, CI_lower,CI_upper, p_val) %>% 
   knitr::kable(digits = 3, align = "lccc", 
